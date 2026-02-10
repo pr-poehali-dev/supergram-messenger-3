@@ -29,6 +29,9 @@ type Chat = {
 };
 
 const Index = () => {
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [registrationStep, setRegistrationStep] = useState(1);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [activeView, setActiveView] = useState<'chats' | 'search' | 'contacts' | 'profile' | 'settings'>('chats');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messageInput, setMessageInput] = useState('');
@@ -37,8 +40,8 @@ const Index = () => {
   const [showPromoDialog, setShowPromoDialog] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [isVerified, setIsVerified] = useState(false);
-  const [username, setUsername] = useState('user123');
-  const [displayName, setDisplayName] = useState('Иван Иванов');
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
 
   const [chats] = useState<Chat[]>([
@@ -73,6 +76,14 @@ const Index = () => {
     }
   };
 
+  const handleRegistration = () => {
+    if (registrationStep === 1 && phoneNumber.length >= 10) {
+      setRegistrationStep(2);
+    } else if (registrationStep === 2 && displayName.trim() && username.trim()) {
+      setIsRegistered(true);
+    }
+  };
+
   const NavButton = ({ view, icon, label }: { view: typeof activeView; icon: string; label: string }) => (
     <button
       onClick={() => setActiveView(view)}
@@ -86,6 +97,109 @@ const Index = () => {
       <span className="text-xs">{label}</span>
     </button>
   );
+
+  if (!isRegistered) {
+    return (
+      <div className="dark">
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+          <div className="w-full max-w-md space-y-6 animate-fade-in">
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-bold neon-text mb-2">superGram</h1>
+              <p className="text-muted-foreground">Мессенджер нового поколения</p>
+            </div>
+
+            <div className="bg-card p-8 rounded-2xl border border-border purple-glow">
+              {registrationStep === 1 ? (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-semibold mb-2">Регистрация</h2>
+                    <p className="text-sm text-muted-foreground">Введите ваш номер телефона</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Номер телефона</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+7 (999) 123-45-67"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      className="text-lg"
+                    />
+                  </div>
+
+                  <Button 
+                    onClick={handleRegistration}
+                    disabled={phoneNumber.length < 10}
+                    className="w-full neon-glow"
+                  >
+                    Продолжить
+                    <Icon name="ArrowRight" size={20} className="ml-2" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setRegistrationStep(1)}
+                      className="mb-4"
+                    >
+                      <Icon name="ArrowLeft" size={16} className="mr-2" />
+                      Назад
+                    </Button>
+                    <h2 className="text-2xl font-semibold mb-2">Создайте профиль</h2>
+                    <p className="text-sm text-muted-foreground">Как вас будут называть?</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Имя</Label>
+                      <Input
+                        id="name"
+                        placeholder="Иван Иванов"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                        <Input
+                          id="username"
+                          placeholder="username"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                          className="pl-8"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleRegistration}
+                    disabled={!displayName.trim() || !username.trim()}
+                    className="w-full neon-glow"
+                  >
+                    <Icon name="Rocket" size={20} className="mr-2" />
+                    Начать общение
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="text-center text-sm text-muted-foreground">
+              <Icon name="Shield" size={16} className="inline mr-1" />
+              Защищено Cloudflare DDoS Protection
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
