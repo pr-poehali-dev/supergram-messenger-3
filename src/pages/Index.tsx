@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,7 +12,9 @@ import { Label } from '@/components/ui/label';
 
 type Message = {
   id: string;
-  text: string;
+  text?: string;
+  voiceUrl?: string;
+  voiceDuration?: number;
   sender: 'me' | 'other';
   timestamp: Date;
 };
@@ -26,13 +28,14 @@ type Chat = {
   timestamp: string;
   unread: number;
   verified?: boolean;
+  isOnline?: boolean;
 };
 
 const Index = () => {
   const [isRegistered, setIsRegistered] = useState(false);
   const [registrationStep, setRegistrationStep] = useState(1);
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [activeView, setActiveView] = useState<'chats' | 'search' | 'contacts' | 'profile' | 'settings'>('chats');
+  const [activeView, setActiveView] = useState<'chats' | 'search' | 'profile' | 'settings'>('chats');
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,12 +46,31 @@ const Index = () => {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [editingProfile, setEditingProfile] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   const [chats] = useState<Chat[]>([
-    { id: '1', name: 'Алексей Смирнов', username: 'alex_dev', lastMessage: 'Привет! Как дела?', timestamp: '14:32', unread: 2, verified: true },
-    { id: '2', name: 'Мария Петрова', username: 'maria_p', lastMessage: 'Созвон в 15:00', timestamp: '13:15', unread: 0 },
-    { id: '3', name: 'Дмитрий', username: 'dmitry_k', lastMessage: 'Отправил файлы', timestamp: 'Вчера', unread: 1 },
+    { id: '1', name: 'Алексей Смирнов', username: 'alex_dev', lastMessage: 'Привет! Как дела?', timestamp: '14:32', unread: 2, verified: true, isOnline: true },
+    { id: '2', name: 'Мария Петрова', username: 'maria_p', lastMessage: 'Созвон в 15:00', timestamp: '13:15', unread: 0, isOnline: false },
+    { id: '3', name: 'Дмитрий', username: 'dmitry_k', lastMessage: 'Отправил файлы', timestamp: 'Вчера', unread: 1, isOnline: true },
   ]);
+
+  useEffect(() => {
+    const savedMessages = localStorage.getItem(`chat_${selectedChat?.id}`);
+    if (savedMessages && selectedChat) {
+      setMessages(JSON.parse(savedMessages));
+    }
+  }, [selectedChat]);
+
+  useEffect(() => {
+    if (selectedChat && messages.length > 0) {
+      localStorage.setItem(`chat_${selectedChat.id}`, JSON.stringify(messages));
+    }
+  }, [messages, selectedChat]);
 
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', text: 'Привет! Как дела?', sender: 'other', timestamp: new Date() },
@@ -66,6 +88,65 @@ const Index = () => {
       setMessages([...messages, newMessage]);
       setMessageInput('');
     }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const newMessage: Message = {
+          id: Date.now().toString(),
+          voiceUrl: audioUrl,
+          voiceDuration: 5,
+          sender: 'me',
+          timestamp: new Date(),
+        };
+        setMessages([...messages, newMessage]);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const startVideoCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      setShowVideoCall(true);
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+    }
+  };
+
+  const endVideoCall = () => {
+    if (localVideoRef.current?.srcObject) {
+      const stream = localVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setShowVideoCall(false);
   };
 
   const handlePromoCode = () => {
@@ -101,8 +182,16 @@ const Index = () => {
   if (!isRegistered) {
     return (
       <div className="dark">
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <div className="w-full max-w-md space-y-6 animate-fade-in">
+        <div 
+          className="min-h-screen bg-background flex items-center justify-center p-4 relative"
+          style={{
+            backgroundImage: 'url(https://cdn.poehali.dev/projects/73c7c354-1802-431d-a358-1e2960979f1a/files/f4f5ee86-5fcd-40e9-aa8c-2b463857cf55.jpg)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+          <div className="w-full max-w-md space-y-6 animate-fade-in relative z-10">
             <div className="text-center mb-8">
               <h1 className="text-4xl font-bold neon-text mb-2">superGram</h1>
               <p className="text-muted-foreground">Мессенджер нового поколения</p>
@@ -210,9 +299,14 @@ const Index = () => {
               <Button variant="ghost" size="icon" onClick={() => setSelectedChat(null)}>
                 <Icon name="ArrowLeft" size={20} />
               </Button>
-              <Avatar className="h-10 w-10">
-                <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback>{selectedChat.name[0]}</AvatarFallback>
+                </Avatar>
+                {selectedChat.isOnline && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-card neon-glow"></div>
+                )}
+              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold">{selectedChat.name}</h3>
@@ -222,12 +316,14 @@ const Index = () => {
                     </Badge>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">@{selectedChat.username}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedChat.isOnline ? 'В сети' : `@${selectedChat.username}`}
+                </p>
               </div>
               <Button variant="ghost" size="icon">
                 <Icon name="Phone" size={20} />
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={startVideoCall}>
                 <Icon name="Video" size={20} />
               </Button>
             </div>
@@ -241,7 +337,14 @@ const Index = () => {
                         ? 'bg-primary text-primary-foreground neon-glow' 
                         : 'bg-secondary text-secondary-foreground'
                     }`}>
-                      <p>{msg.text}</p>
+                      {msg.voiceUrl ? (
+                        <div className="flex items-center gap-2">
+                          <Icon name="Mic" size={16} />
+                          <audio controls src={msg.voiceUrl} className="max-w-full" />
+                        </div>
+                      ) : (
+                        <p>{msg.text}</p>
+                      )}
                       <p className="text-xs opacity-70 mt-1">{msg.timestamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
                   </div>
@@ -251,8 +354,13 @@ const Index = () => {
 
             <div className="bg-card border-t border-border px-4 py-3">
               <div className="flex gap-2">
-                <Button variant="ghost" size="icon">
-                  <Icon name="Paperclip" size={20} />
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={isRecording ? 'text-red-500 neon-glow' : ''}
+                >
+                  <Icon name="Mic" size={20} />
                 </Button>
                 <Input
                   value={messageInput}
@@ -260,11 +368,18 @@ const Index = () => {
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Сообщение..."
                   className="flex-1"
+                  disabled={isRecording}
                 />
-                <Button onClick={handleSendMessage} className="neon-glow">
+                <Button onClick={handleSendMessage} className="neon-glow" disabled={isRecording}>
                   <Icon name="Send" size={20} />
                 </Button>
               </div>
+              {isRecording && (
+                <p className="text-xs text-red-500 mt-2 animate-pulse">
+                  <Icon name="Circle" size={8} className="inline mr-1 animate-pulse-glow" />
+                  Запись голосового сообщения...
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -300,9 +415,14 @@ const Index = () => {
                         className="px-4 py-3 hover:bg-secondary/50 cursor-pointer transition-all hover:purple-glow"
                       >
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-12 w-12">
-                            <AvatarFallback>{chat.name[0]}</AvatarFallback>
-                          </Avatar>
+                          <div className="relative">
+                            <Avatar className="h-12 w-12">
+                              <AvatarFallback>{chat.name[0]}</AvatarFallback>
+                            </Avatar>
+                            {chat.isOnline && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-card neon-glow"></div>
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-semibold truncate">{chat.name}</h3>
@@ -332,13 +452,6 @@ const Index = () => {
                     className="mb-4"
                   />
                   <p className="text-center text-muted-foreground text-sm">Введите номер телефона или username для поиска</p>
-                </div>
-              )}
-
-              {activeView === 'contacts' && (
-                <div className="p-4">
-                  <h2 className="text-xl font-semibold mb-4">Контакты</h2>
-                  <p className="text-center text-muted-foreground text-sm">Ваши контакты появятся здесь</p>
                 </div>
               )}
 
@@ -449,7 +562,6 @@ const Index = () => {
               <div className="flex justify-around">
                 <NavButton view="chats" icon="MessageSquare" label="Чаты" />
                 <NavButton view="search" icon="Search" label="Поиск" />
-                <NavButton view="contacts" icon="Users" label="Контакты" />
                 <NavButton view="profile" icon="User" label="Профиль" />
                 <NavButton view="settings" icon="Settings" label="Настройки" />
               </div>
@@ -471,6 +583,45 @@ const Index = () => {
               />
               <Button onClick={handlePromoCode} className="w-full neon-glow">
                 Активировать
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showVideoCall} onOpenChange={setShowVideoCall}>
+          <DialogContent className="max-w-4xl h-[80vh]">
+            <DialogHeader>
+              <DialogTitle>Видеозвонок с {selectedChat?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-4 h-full">
+              <div className="relative bg-black rounded-lg overflow-hidden">
+                <video 
+                  ref={remoteVideoRef} 
+                  autoPlay 
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-4 left-4 text-white bg-black/50 px-3 py-1 rounded">
+                  {selectedChat?.name}
+                </div>
+              </div>
+              <div className="relative bg-black rounded-lg overflow-hidden">
+                <video 
+                  ref={localVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute bottom-4 left-4 text-white bg-black/50 px-3 py-1 rounded">
+                  Вы
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-center gap-4 mt-4">
+              <Button variant="destructive" onClick={endVideoCall} size="lg" className="gap-2">
+                <Icon name="PhoneOff" size={20} />
+                Завершить звонок
               </Button>
             </div>
           </DialogContent>
